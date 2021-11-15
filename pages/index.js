@@ -129,10 +129,10 @@ export default function Home() {
     try {
       isWithdrawing ? await handleWithdraw() : await handleDeposit();
       setAmount('0');
-      await loadBlockchainData();
+      loadBlockchainData();
     } catch (error) {
       setAlert({
-        color: 'green',
+        color: 'red',
         message: error.message,
         dismissable: true,
       });
@@ -145,7 +145,7 @@ export default function Home() {
     <div className='px-12 py-2'>
       {/* Alert */}
       <div
-        className={`absolute bg-green-100 text-${
+        className={`absolute bg-${alert.color}-100 text-${
           alert.color
         }-900 py-2 px-4 rounded z-20 top-32 ${
           alert.message ? 'translate-y-0' : '-translate-y-52'
@@ -250,23 +250,15 @@ export default function Home() {
                 </div>
               ) : null}
 
-              {isWithdrawing ? (
-                <button
-                  className='bg-blue-500 font-bold text-white text-center rounded-full w-full p-4 disabled:opacity-50 hover:bg-blue-600 disabled:cursor-not-allowed'
-                  disabled={loading || !isDeposited}
-                  onClick={handleClick}
-                >
-                  Withdraw
-                </button>
-              ) : (
-                <button
-                  className='bg-blue-500 font-bold text-white text-center rounded-full w-full p-4 disabled:opacity-50 hover:bg-blue-600 disabled:cursor-not-allowed'
-                  disabled={loading || isDeposited}
-                  onClick={handleClick}
-                >
-                  Deposit Now
-                </button>
-              )}
+              <button
+                className='bg-blue-500 font-bold text-white text-center rounded-full w-full p-4 disabled:opacity-50 hover:bg-blue-600 active:bg-blue-800 disabled:cursor-not-allowed'
+                disabled={
+                  loading || (isWithdrawing ? !isDeposited : isDeposited)
+                }
+                onClick={handleClick}
+              >
+                {isWithdrawing ? 'Withdraw' : 'Deposit Now'}
+              </button>
             </div>
           </div>
         </div>
