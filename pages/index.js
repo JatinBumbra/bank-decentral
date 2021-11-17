@@ -96,7 +96,6 @@ export default function Home() {
       const deposited = await bankContract.methods
         .isDeposited(accounts[0])
         .call();
-      console.log(deposited);
       setIsDeposited(deposited);
     } else {
       alert('EthSwap contract not deployed to this network');
