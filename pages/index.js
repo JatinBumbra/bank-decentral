@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import Web3 from 'web3';
-import TokenContract from '../build/contracts/Token.json';
-import BankContract from '../build/contracts/Bank.json';
+import TokenContract from '../contracts/build/Token.json';
+import BankContract from '../contracts/build/Bank.json';
+
+const initAlert = {
+  message: '',
+  color: '',
+  dismissable: false,
+};
 
 export default function Home() {
   const [account, setAccount] = useState({
@@ -11,37 +17,38 @@ export default function Home() {
   });
   const [option, setOption] = useState('Deposit');
   const [isWithdrawing, setIsWithdrawing] = useState(0);
-  const [token, setToken] = useState();
   const [bank, setBank] = useState();
   const [amount, setAmount] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [isDeposited, setIsDeposited] = useState(false);
 
-  const [alert, setAlert] = useState({
-    message: '',
-    color: '',
-    dismissable: false,
-  });
+  const [contractsLoaded, setContractsLoaded] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [alert, setAlert] = useState(initAlert);
 
   useEffect(() => {
-    loadWeb3().then(loadBlockchainData).then(setLoading);
+    resetUI();
+    window.ethereum.on('accountsChanged', resetUI);
+    window.ethereum.on('chainChanged', resetUI);
   }, []);
 
   useEffect(() => {
-    alert.dismissable &&
-      setTimeout(
-        () =>
-          setAlert({
-            message: '',
-            color: '',
-            dismissable: false,
-          }),
-        5000
-      );
+    alert.dismissable && setTimeout(() => setAlert(initAlert), 5000);
   }, [alert]);
 
-  const loadWeb3 = async () => {
+  const resetUI = () => {
     setLoading(true);
+    setAmount(0);
+    setIsWithdrawing(0);
+    setBank();
+    setOption('Deposit');
+    setIsDeposited(false);
+    setAlert(initAlert);
+    setContractsLoaded(false);
+    loadWeb3().then(loadBlockchainData).then(setLoading);
+  };
+
+  const loadWeb3 = async () => {
     if (window.ethereum) {
       window.web3 = new Web3(window.ethereum);
       await window.ethereum.enable();
@@ -57,17 +64,19 @@ export default function Home() {
   };
 
   const loadBlockchainData = async () => {
+    // Load web3
     const web3 = window.web3;
-    // Get account and its balance
+    if (!web3) return;
+    // Data vars
+    let address, eth, kit;
+    // Get account
     const accounts = await web3.eth.getAccounts();
-    const eth = await web3.eth.getBalance(accounts[0]);
-    setAccount((prev) => ({
-      ...prev,
-      address: accounts[0],
-      eth: web3.utils.fromWei(eth),
-    }));
+    address = accounts[0];
     // Get the network ID
     const netId = await web3.eth.net.getId();
+    // Get ether balance for address
+    const ethb = await web3.eth.getBalance(address);
+    eth = web3.utils.fromWei(ethb.toString());
     // Load token contract
     const tokenData = TokenContract.networks[netId];
     if (tokenData) {
@@ -75,15 +84,9 @@ export default function Home() {
         TokenContract.abi,
         tokenData.address
       );
-      setToken(tokenContract);
       // Get kits owned by user
-      const kits = await tokenContract.methods.balanceOf(accounts[0]).call();
-      setAccount((prev) => ({
-        ...prev,
-        kit: web3.utils.fromWei(kits.toString()),
-      }));
-    } else {
-      alert('Token contract not deployed to this network');
+      const kitb = await tokenContract.methods.balanceOf(address).call();
+      kit = web3.utils.fromWei(kitb.toString());
     }
     // Load bank contract
     const bankData = BankContract.networks[netId];
@@ -93,13 +96,23 @@ export default function Home() {
         bankData.address
       );
       setBank(bankContract);
-      const deposited = await bankContract.methods
-        .isDeposited(accounts[0])
-        .call();
+      const deposited = await bankContract.methods.isDeposited(address).call();
       setIsDeposited(deposited);
-    } else {
-      alert('EthSwap contract not deployed to this network');
     }
+    // If contracts are not deployed, then show error
+    if (!tokenData || !bankData) {
+      setAlert({
+        color: 'red',
+        message:
+          'Contracts not deployed to this network. Switch to Ropsten Network.',
+        dismissable: false,
+      });
+    }
+    if (tokenData && bankData) {
+      setContractsLoaded(true);
+    }
+
+    setAccount({ address, eth, kit });
   };
 
   const handleDeposit = async () => {
@@ -123,12 +136,26 @@ export default function Home() {
     });
   };
 
+  const _checkLoaded = () => {
+    if (!contractsLoaded) {
+      setAlert({
+        color: 'red',
+        message:
+          'Contracts not deployed to this network. Switch to Ropsten Network.',
+        dismissable: false,
+      });
+      return false;
+    }
+    if (alert.message) return false;
+    return true;
+  };
+
   const handleClick = async () => {
     setLoading(true);
     try {
+      if (!_checkLoaded()) return;
       isWithdrawing ? await handleWithdraw() : await handleDeposit();
-      setAmount('0');
-      loadBlockchainData();
+      resetUI();
     } catch (error) {
       setAlert({
         color: 'red',
@@ -143,23 +170,20 @@ export default function Home() {
   return (
     <div className='px-12 py-2'>
       {/* Alert */}
-      <div
-        className={`absolute bg-${alert.color}-100 text-${
-          alert.color
-        }-900 py-2 px-4 rounded z-20 top-32 ${
-          alert.message ? 'translate-y-0' : '-translate-y-52'
-        }`}
-      >
-        {alert.message}
-      </div>
-      {/* Warning */}
-      <p className='bg-red-100 text-red-500 p-2 px-3 rounded text-sm'>
-        <span className='font-bold'>IMPORTANT.</span> Don't spend real ETH here,
-        this website is for demo purposes. Connect with a TEST ACCOUNT ONLY.
-        {/* <a className='text-red-900 border-b border-red-900 cursor-pointer'>
-          Read Here
-        </a> */}
-      </p>
+      <p className='bg-red-500'></p>
+      <p className='bg-green-500'></p>
+      {loading ? (
+        <p className='bg-yellow-500 text-white p-1 text-sm text-center'>
+          Loading...
+        </p>
+      ) : null}
+      {alert.message ? (
+        <div
+          className={`bg-${alert.color}-500 text-white text-center text-sm p-1`}
+        >
+          {alert.message}
+        </div>
+      ) : null}
       {/* Header */}
       <header className='py-3 flex justify-between'>
         <p className='text-2xl font-medium'>
